@@ -301,11 +301,38 @@ def build_mermaid(df: pd.DataFrame, root: str) -> str:
                         tgt_id = add_terminal(key, dest_value, 'TRANSFER')
                 else:
                     tgt_id = add_terminal(key, tstr, 'TRANSFER')
+                # Primary transfer edge
                 edge_lines.append(f"{current_id} -->|transfer| {tgt_id}")
             else:
                 # No transfer info – treat as terminal
                 term_id = add_terminal(key, 'Transfer', 'TRANSFER')
                 edge_lines.append(f"{current_id} -->|transfer| {term_id}")
+            # Handle fallback when there are no agents in the queue.  If the CSV
+            # provides a NoAgentsOnQueueAction of "Jump", draw an additional
+            # branch labelled "no agents" to the target specified by JumpToLocation.
+            na_action = None
+            # We access the original row via the canonical key row_key to avoid
+            # confusion with case-insensitive lookups.
+            if 'NoAgentsOnQueueAction' in row and pd.notna(row['NoAgentsOnQueueAction']):
+                na_action = str(row['NoAgentsOnQueueAction']).strip().lower()
+            if na_action and na_action.startswith('jump'):
+                na_dest = row.get('JumpToLocation')
+                if pd.notna(na_dest):
+                    dest_key2 = str(na_dest).strip()
+                    tgt_key2 = dest_key2
+                    if dest_key2 not in lookup:
+                        lk2 = dest_key2.lower()
+                        if lk2 in lower_map:
+                            tgt_key2 = lower_map[lk2]
+                    if tgt_key2 in lookup:
+                        tgt_id2 = walk(tgt_key2)
+                    else:
+                        # Create a terminal for unknown jump targets
+                        tgt_id2 = add_terminal(key, dest_key2, 'JUMP')
+                else:
+                    tgt_id2 = add_terminal(key, 'No Agents', 'JUMP')
+                # Use a descriptive edge label to indicate the no-agent path
+                edge_lines.append(f"{current_id} -->|no agents| {tgt_id2}")
         elif act_upper == 'JUMP':
             dest = row.get('JumpToLocation')
             if pd.notna(dest):
